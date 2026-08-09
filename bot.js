@@ -34,17 +34,33 @@ bot.on('polling_error', function(err) {
 
 // ============ STATS ============
 function getStats() {
-  const tables = {
-    phone_registry: 'Phone Registry (NIK + Nomor)',
-    vehicle_data: 'Data Kendaraan (NIK + Plat)',
-    government_letters: 'Surat Pemerintah (NIP)',
-    bukalapak_data: 'Bukalapak Users',
-    sim_data: 'Data SIM',
-    visa_card_data: 'Visa/Mastercard',
-    member_data: 'Data Anggota/Mahasiswa',
-    indihome_data: 'Data IndiHome',
-    citizen_data: 'Data Kependudukan (SIAK)'
-  };
+  const tables = {};
+  const allTables = [
+    ['phone_registry', 'Phone Registry (NIK+Nomor)'],
+    ['police_data', 'Data POLRI'],
+    ['vehicle_data', 'Data Kendaraan (NIK+Plat)'],
+    ['government_letters', 'Surat Pemerintah (NIP)'],
+    ['bukalapak_data', 'Bukalapak Users'],
+    ['sim_data', 'Data SIM'],
+    ['visa_card_data', 'Visa/Mastercard'],
+    ['member_data', 'Data Anggota'],
+    ['shopee_data', 'Shopee'],
+    ['indo_store_data', 'Indonesia Store'],
+    ['sg_shopping_data', 'SG Shopping'],
+    ['shopping_indo_data', 'Shopping Indo'],
+    ['bsi_bank_data', 'BSI Bank'],
+    ['kpu_data', 'KPU'],
+    ['pertamina_data', 'MyPertamina'],
+    ['indihome_browse_data', 'Indihome Browse'],
+    ['indihome_data', 'IndiHome'],
+    ['citizen_data', 'SIAK/Dukcapil']
+  ];
+  for (const [t, l] of allTables) {
+    try {
+      const r = db.prepare('SELECT COUNT(*) as cnt FROM ' + t).get();
+      if (r.cnt > 0) tables[t] = l;
+    } catch(e) {}
+  }
   let stats = [];
   let total = 0;
   for (const [table, label] of Object.entries(tables)) {
@@ -86,6 +102,46 @@ function searchByPhone(phone) {
     results.push({ source: 'Bukalapak', user_id: r.user_id, username: r.username, email: r.email, phone: r.phone });
   }
 
+  // Police data
+  try {
+    const polRows = db.prepare('SELECT * FROM police_data WHERE hp LIKE ? LIMIT ?').all('%' + phone + '%', MAX_RESULTS);
+    for (const r of polRows) {
+      results.push({ source: 'Data POLRI', pangkat: r.pangkat, nama: r.nama, tugas: r.tugas, hp: r.hp, email: r.email });
+    }
+  } catch(e) {}
+
+  // Shopee
+  try {
+    const shpRows = db.prepare('SELECT * FROM shopee_data WHERE buyer_name LIKE ? OR tracking_no LIKE ? LIMIT ?').all('%' + phone + '%', '%' + phone + '%', MAX_RESULTS);
+    for (const r of shpRows) {
+      results.push({ source: 'Shopee', buyer: r.buyer_name, address: r.address, product: r.product, tracking: r.tracking_no });
+    }
+  } catch(e) {}
+
+  // BSI Bank
+  try {
+    const bsiRows = db.prepare('SELECT * FROM bsi_bank_data WHERE phone LIKE ? OR phone62 LIKE ? LIMIT ?').all('%' + phone + '%', '%' + phone + '%', MAX_RESULTS);
+    for (const r of bsiRows) {
+      results.push({ source: 'BSI Bank', name: r.name, phone: r.phone, phone62: r.phone62, email: r.email });
+    }
+  } catch(e) {}
+
+  // Shopping Indo
+  try {
+    const siRows = db.prepare('SELECT * FROM shopping_indo_data WHERE phone LIKE ? OR active_phone LIKE ? LIMIT ?').all('%' + phone + '%', '%' + phone + '%', MAX_RESULTS);
+    for (const r of siRows) {
+      results.push({ source: 'Shopping Indo', first_name: r.first_name, last_name: r.last_name, phone: r.phone, address: r.address, location: r.location });
+    }
+  } catch(e) {}
+
+  // SG Shopping
+  try {
+    const sgRows = db.prepare('SELECT * FROM sg_shopping_data WHERE mobile LIKE ? LIMIT ?').all('%' + phone + '%', MAX_RESULTS);
+    for (const r of sgRows) {
+      results.push({ source: 'SG Shopping', name: r.name, mobile: r.mobile, address: r.address, postal: r.postal });
+    }
+  } catch(e) {}
+
   return results;
 }
 
@@ -107,6 +163,22 @@ function searchByNIK(nik) {
   for (const r of vehRows) {
     results.push({ source: 'Data Kendaraan', nik: r.nik, nama: r.name, plat_nomor: r.plate_number, alamat: r.address, merk: r.brand, tipe: r.type, vin: r.vin_number, no_mesin: r.engine_number, warna: r.color, tahun: r.year, bpkb: r.bpkb });
   }
+
+  // KPU
+  try {
+    const kpuRows = db.prepare('SELECT * FROM kpu_data WHERE no_nik LIKE ? LIMIT ?').all('%' + nik + '%', MAX_RESULTS);
+    for (const r of kpuRows) {
+      results.push({ source: 'KPU (Pemilih)', no_nik: r.no_nik, no_kk: r.no_kk, nama: r.nama, tempat_lahir: r.tempat_lahir, tanggal_lahir: r.tanggal_lahir, usia: r.usia, jns_kelamin: r.jns_kelamin, alamat: r.alamat, provinsi: r.provinsi, kabupaten: r.kabupaten });
+    }
+  } catch(e) {}
+
+  // Pertamina
+  try {
+    const pertRows = db.prepare('SELECT * FROM pertamina_data WHERE national_id LIKE ? LIMIT ?').all('%' + nik + '%', MAX_RESULTS);
+    for (const r of pertRows) {
+      results.push({ source: 'MyPertamina', name: r.name, mobile: r.mobile_number, national_id: r.national_id, email: r.email, gender: r.gender });
+    }
+  } catch(e) {}
 
   return results;
 }
@@ -130,6 +202,46 @@ function searchByName(name) {
     results.push({ source: 'Data Kendaraan', nik: r.nik, nama: r.name, plat_nomor: r.plate_number, alamat: r.address, merk: r.brand, tipe: r.type, warna: r.color, tahun: r.year });
   }
 
+  // Police data
+  try {
+    const polRows = db.prepare('SELECT * FROM police_data WHERE nama LIKE ? LIMIT ?').all('%' + upper + '%', MAX_RESULTS);
+    for (const r of polRows) {
+      results.push({ source: 'Data POLRI', pangkat: r.pangkat, nama: r.nama, tugas: r.tugas, hp: r.hp, email: r.email });
+    }
+  } catch(e) {}
+
+  // Shopee
+  try {
+    const shpRows = db.prepare('SELECT * FROM shopee_data WHERE buyer_name LIKE ? LIMIT ?').all('%' + upper + '%', MAX_RESULTS);
+    for (const r of shpRows) {
+      results.push({ source: 'Shopee', buyer: r.buyer_name, address: r.address, product: r.product, tracking: r.tracking_no });
+    }
+  } catch(e) {}
+
+  // Indonesia Store
+  try {
+    const isRows = db.prepare('SELECT * FROM indo_store_data WHERE nama LIKE ? LIMIT ?').all('%' + upper + '%', MAX_RESULTS);
+    for (const r of isRows) {
+      results.push({ source: 'Indonesia Store', nama: r.nama, email: r.email, telepon: r.telepon, alamat: r.alamat });
+    }
+  } catch(e) {}
+
+  // BSI Bank
+  try {
+    const bsiRows = db.prepare('SELECT * FROM bsi_bank_data WHERE name LIKE ? LIMIT ?').all('%' + upper + '%', MAX_RESULTS);
+    for (const r of bsiRows) {
+      results.push({ source: 'BSI Bank', name: r.name, phone: r.phone, email: r.email });
+    }
+  } catch(e) {}
+
+  // KPU
+  try {
+    const kpuRows = db.prepare('SELECT * FROM kpu_data WHERE nama LIKE ? LIMIT ?').all('%' + upper + '%', MAX_RESULTS);
+    for (const r of kpuRows) {
+      results.push({ source: 'KPU', no_nik: r.no_nik, no_kk: r.no_kk, nama: r.nama, tempat_lahir: r.tempat_lahir, tanggal_lahir: r.tanggal_lahir, alamat: r.alamat, provinsi: r.provinsi });
+    }
+  } catch(e) {}
+
   return results;
 }
 
@@ -145,6 +257,38 @@ function searchByEmail(email) {
   for (const r of blRows) {
     results.push({ source: 'Bukalapak', user_id: r.user_id, email: r.email, username: r.username, phone: r.phone });
   }
+
+  // Police
+  try {
+    const polRows = db.prepare('SELECT * FROM police_data WHERE email LIKE ? LIMIT ?').all('%' + email + '%', MAX_RESULTS);
+    for (const r of polRows) {
+      results.push({ source: 'Data POLRI', pangkat: r.pangkat, nama: r.nama, tugas: r.tugas, email: r.email, hp: r.hp });
+    }
+  } catch(e) {}
+
+  // Indonesia Store
+  try {
+    const isRows = db.prepare('SELECT * FROM indo_store_data WHERE email LIKE ? LIMIT ?').all('%' + email + '%', MAX_RESULTS);
+    for (const r of isRows) {
+      results.push({ source: 'Indonesia Store', nama: r.nama, email: r.email, telepon: r.telepon, alamat: r.alamat });
+    }
+  } catch(e) {}
+
+  // BSI Bank
+  try {
+    const bsiRows = db.prepare('SELECT * FROM bsi_bank_data WHERE email LIKE ? LIMIT ?').all('%' + email + '%', MAX_RESULTS);
+    for (const r of bsiRows) {
+      results.push({ source: 'BSI Bank', name: r.name, email: r.email, phone: r.phone });
+    }
+  } catch(e) {}
+
+  // Pertamina
+  try {
+    const pertRows = db.prepare('SELECT * FROM pertamina_data WHERE email LIKE ? LIMIT ?').all('%' + email + '%', MAX_RESULTS);
+    for (const r of pertRows) {
+      results.push({ source: 'MyPertamina', name: r.name, email: r.email, mobile: r.mobile_number, national_id: r.national_id });
+    }
+  } catch(e) {}
 
   return results;
 }
