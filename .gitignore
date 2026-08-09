@@ -1,0 +1,9 @@
+node_modules/
+osint.db
+osint.db-shm
+osint.db-wal
+*.db
+*.db-shm
+*.db-wal
+.env
+*.zip
