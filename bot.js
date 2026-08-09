@@ -1,3 +1,4 @@
+require('dotenv').config();
 const TelegramBotModule = require('node-telegram-bot-api');
 const TelegramBot = typeof TelegramBotModule === 'function' ? TelegramBotModule : (TelegramBotModule.default || TelegramBotModule.TelegramBot || TelegramBotModule);
 const Database = require('better-sqlite3');
@@ -13,7 +14,23 @@ const MAX_RESULTS = 10;
 const db = new Database(DB_PATH, { readonly: true });
 db.pragma('cache_size = -32000');
 
+if (!BOT_TOKEN || BOT_TOKEN === 'YOUR_BOT_TOKEN_HERE') {
+  console.error('ERROR: BOT_TOKEN belum diset!');
+  console.error('Buat file .env dengan isi: BOT_TOKEN=token_kamu');
+  console.error('Atau: export BOT_TOKEN=token_kamu');
+  process.exit(1);
+}
+
 const bot = new TelegramBot(BOT_TOKEN, { polling: true });
+
+// Suppress polling errors (e.g. when token is invalid)
+bot.on('polling_error', function(err) {
+  if (err.code === 'ETELEGRAM' && err.message.includes('404')) {
+    console.error('Token tidak valid! Cek BOT_TOKEN di file .env');
+    process.exit(1);
+  }
+  console.error('Polling error:', err.code || err.message);
+});
 
 // ============ STATS ============
 function getStats() {
