@@ -313,6 +313,106 @@ wb.close()
   });
 }
 
+// ============ STEP 3: Download & Import Extra CSV Data ============
+async function importExtraCSV() {
+  const extraDir = path.join(__dirname, 'extra_data');
+  const extraZip = path.join(__dirname, 'extra_data.zip');
+
+  // Check if any extra tables already have data
+  let needsDownload = false;
+  for (const t of ['shopee_data', 'indo_store_data', 'sg_shopping_data', 'shopping_indo_data', 'bsi_bank_data']) {
+    try { if (db.prepare('SELECT COUNT(*) as c FROM ' + t).get().c === 0) needsDownload = true; } catch(e) { needsDownload = true; }
+  }
+
+  if (!needsDownload) { console.log('[~] Extra data already imported, skip'); return; }
+
+  // Check if we actually have the CSV files
+  const hasCsv = fs.existsSync(path.join(extraDir, 'shopee.csv'));
+  
+  if (!hasCsv) {
+    // Clean up any bad files
+    try { fs.unlinkSync(extraZip); } catch(e) {}
+    try { fs.rmSync(extraDir, { recursive: true }); } catch(e) {}
+
+    console.log('[*] Downloading extra CSV data (29MB)...');
+    try {
+      execSync('curl -sL -o ' + extraZip + ' "https://github.com/revanwiralaga7-design/telegram-osint-bot/releases/download/extra-data-v1/extra_data.zip"', { stdio: 'pipe', timeout: 120000 });
+      const stat = fs.statSync(extraZip);
+      if (stat.size < 1000000) {
+        console.log('[!] Downloaded file too small (' + stat.size + ' bytes), likely failed');
+        fs.unlinkSync(extraZip);
+        return;
+      }
+      console.log('[+] Downloaded extra_data.zip (' + (stat.size / 1024 / 1024).toFixed(1) + 'MB)');
+    } catch (e) {
+      console.log('[!] Failed to download extra data: ' + e.message);
+      try { fs.unlinkSync(extraZip); } catch(e2) {}
+      return;
+    }
+  }
+
+  // Extract if needed
+  if (fs.existsSync(extraZip) && !hasCsv) {
+    try {
+      fs.mkdirSync(extraDir, { recursive: true });
+      execSync('unzip -o ' + extraZip + ' -d ' + extraDir, { stdio: 'pipe' });
+      console.log('[+] Extracted extra_data.zip');
+    } catch (e) { console.log('[!] Extract failed: ' + e.message); return; }
+  }
+
+  if (!fs.existsSync(path.join(extraDir, 'shopee.csv'))) { console.log('[!] CSV files not found after extract'); return; }
+
+  const csvImports = [
+    { file: 'shopee.csv', table: 'shopee_data', label: 'Shopee 173K',
+      sql: 'INSERT INTO shopee_data (tanggal,amount,seller_id,shipping,tracking_no,buyer_name,address,product) VALUES (?,?,?,?,?,?,?,?)',
+      cols: 8 },
+    { file: 'indo_store.csv', table: 'indo_store_data', label: 'Indonesia Store 70K',
+      sql: 'INSERT INTO indo_store_data (nama,tanggal_lahir,email,telepon,alamat,pesanan) VALUES (?,?,?,?,?,?)',
+      cols: 6 },
+    { file: 'sg_shopping.csv', table: 'sg_shopping_data', label: 'SG Shopping 103K',
+      sql: 'INSERT INTO sg_shopping_data (id_num,location_id,name,address,address2,postal,home_phone,mobile) VALUES (?,?,?,?,?,?,?,?)',
+      cols: 8, isSG: true },
+    { file: 'shopping_indo.csv', table: 'shopping_indo_data', label: 'Shopping Indo 3.3K',
+      sql: 'INSERT INTO shopping_indo_data (uid,first_name,last_name,gender,phone,active_phone,address,location,hometown,work) VALUES (?,?,?,?,?,?,?,?,?,?)',
+      cols: 10 },
+    { file: 'bsi_bank.csv', table: 'bsi_bank_data', label: 'BSI Bank 510',
+      sql: 'INSERT INTO bsi_bank_data (app_id,name,phone,phone62,active_account,activation_code,register_by,email) VALUES (?,?,?,?,?,?,?,?)',
+      cols: 8, isBSI: true },
+  ];
+
+  for (const imp of csvImports) {
+    const fp = path.join(extraDir, imp.file);
+    if (!fs.existsSync(fp)) continue;
+    try { if (db.prepare('SELECT COUNT(*) as c FROM ' + imp.table).get().c > 0) { console.log('[~] ' + imp.label + ': already imported'); continue; } } catch(e) {}
+
+    console.log('[*] Importing ' + imp.label + '...');
+    const ins = db.prepare(imp.sql);
+    const batchFn = db.transaction(rows => { for (const r of rows) ins.run(...r); });
+    let cnt = 0, rows = [], first = true;
+
+    await new Promise(resolve => {
+      fs.createReadStream(fp).pipe(csv())
+        .on('data', r => {
+          if (first) { first = false; return; }
+          const v = Object.values(r);
+          let mapped;
+          if (imp.isSG) {
+            mapped = [r.id||'', r.locationid||'', r.lastname||'', r.address1||'', r.address2||'', r.postal||'', r.home||'', r.mobile||''];
+          } else if (imp.isBSI) {
+            mapped = [v[0]||'', v[4]||'', v[5]||'', v[6]||'', v[7]||'', v[8]||'', v[9]||'', v[10]||''];
+          } else {
+            mapped = v.slice(0, imp.cols).map(x => (x || '').substring(0, 500));
+          }
+          rows.push(mapped);
+          cnt++;
+          if (rows.length >= 5000) { batchFn(rows); rows = []; if (cnt % 50000 === 0) console.log('  ... ' + cnt); }
+        })
+        .on('end', () => { if (rows.length) batchFn(rows); console.log('[+] ' + imp.label + ': ' + cnt + ' rows'); resolve(); })
+        .on('error', () => resolve());
+    });
+  }
+}
+
 // ============ MAIN ============
 async function main() {
   console.log('=== OSINT Bot - Master Data Importer ===\n');
@@ -320,6 +420,7 @@ async function main() {
   await importPolice();
   await importNetleaksSamples();
   await importXlsxFiles();
+  await importExtraCSV();
 
   // Create indexes
   console.log('\n[*] Creating indexes...');

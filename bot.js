@@ -53,7 +53,12 @@ function getStats() {
     ['pertamina_data', 'MyPertamina'],
     ['indihome_browse_data', 'Indihome Browse'],
     ['indihome_data', 'IndiHome'],
-    ['citizen_data', 'SIAK/Dukcapil']
+    ['citizen_data', 'SIAK/Dukcapil'],
+    ['ms_contacts', '🆕 Microsoft Contacts'],
+    ['ms_leads', '🆕 Microsoft Leads'],
+    ['ms_users', '🆕 Microsoft Users'],
+    ['ms_incidents', '🆕 Microsoft Incidents'],
+    ['ms_credentials', '🆕 Microsoft Credentials']
   ];
   for (const [t, l] of allTables) {
     try {
@@ -140,6 +145,20 @@ function searchByPhone(phone) {
     for (const r of sgRows) {
       results.push({ source: 'SG Shopping', name: r.name, mobile: r.mobile, address: r.address, postal: r.postal });
     }
+  } catch(e) {}
+
+  // Microsoft data
+  try {
+    const msc = db.prepare('SELECT * FROM ms_contacts WHERE phone LIKE ? LIMIT ?').all('%' + phone + '%', MAX_RESULTS);
+    for (const r of msc) results.push({ source: 'MS Contacts', name: r.name, phone: r.phone, email: r.email, company: r.company, title: r.title });
+  } catch(e) {}
+  try {
+    const msl = db.prepare('SELECT * FROM ms_leads WHERE phone LIKE ? LIMIT ?').all('%' + phone + '%', MAX_RESULTS);
+    for (const r of msl) results.push({ source: 'MS Leads', name: r.name, phone: r.phone, email: r.email, company: r.company });
+  } catch(e) {}
+  try {
+    const msu = db.prepare('SELECT * FROM ms_users WHERE phone LIKE ? LIMIT ?').all('%' + phone + '%', MAX_RESULTS);
+    for (const r of msu) results.push({ source: 'MS Users', name: r.name, phone: r.phone, email: r.email, department: r.department });
   } catch(e) {}
 
   return results;
@@ -242,6 +261,20 @@ function searchByName(name) {
     }
   } catch(e) {}
 
+  // Microsoft data
+  try {
+    const msc = db.prepare('SELECT * FROM ms_contacts WHERE name LIKE ? LIMIT ?').all('%' + upper + '%', MAX_RESULTS);
+    for (const r of msc) results.push({ source: 'MS Contacts', name: r.name, email: r.email, phone: r.phone, company: r.company, title: r.title, city: r.city, country: r.country });
+  } catch(e) {}
+  try {
+    const msl = db.prepare('SELECT * FROM ms_leads WHERE name LIKE ? LIMIT ?').all('%' + upper + '%', MAX_RESULTS);
+    for (const r of msl) results.push({ source: 'MS Leads', name: r.name, email: r.email, phone: r.phone, company: r.company, title: r.title, city: r.city, country: r.country });
+  } catch(e) {}
+  try {
+    const msu = db.prepare('SELECT * FROM ms_users WHERE name LIKE ? LIMIT ?').all('%' + upper + '%', MAX_RESULTS);
+    for (const r of msu) results.push({ source: 'MS Users', name: r.name, email: r.email, username: r.username, phone: r.phone, department: r.department, title: r.title });
+  } catch(e) {}
+
   return results;
 }
 
@@ -290,6 +323,24 @@ function searchByEmail(email) {
     }
   } catch(e) {}
 
+  // Microsoft data
+  try {
+    const msc = db.prepare('SELECT * FROM ms_contacts WHERE email LIKE ? LIMIT ?').all('%' + email + '%', MAX_RESULTS);
+    for (const r of msc) results.push({ source: 'MS Contacts', name: r.name, email: r.email, phone: r.phone, company: r.company, title: r.title, city: r.city, country: r.country });
+  } catch(e) {}
+  try {
+    const msl = db.prepare('SELECT * FROM ms_leads WHERE email LIKE ? LIMIT ?').all('%' + email + '%', MAX_RESULTS);
+    for (const r of msl) results.push({ source: 'MS Leads', name: r.name, email: r.email, phone: r.phone, company: r.company, title: r.title });
+  } catch(e) {}
+  try {
+    const msu = db.prepare('SELECT * FROM ms_users WHERE email LIKE ? LIMIT ?').all('%' + email + '%', MAX_RESULTS);
+    for (const r of msu) results.push({ source: 'MS Users', name: r.name, email: r.email, username: r.username, phone: r.phone, department: r.department });
+  } catch(e) {}
+  try {
+    const mscr = db.prepare('SELECT * FROM ms_credentials WHERE email LIKE ? LIMIT ?').all('%' + email + '%', MAX_RESULTS);
+    for (const r of mscr) results.push({ source: 'MS Credentials', email: r.email, username: r.username, password_hash: r.password_hash ? r.password_hash.substring(0,20)+'...' : '', name: r.name, domain: r.domain });
+  } catch(e) {}
+
   return results;
 }
 
@@ -317,6 +368,15 @@ function searchByUsername(username) {
   for (const r of blRows) {
     results.push({ source: 'Bukalapak', user_id: r.user_id, username: r.username, email: r.email, phone: r.phone });
   }
+  // Microsoft data
+  try {
+    const msu = db.prepare('SELECT * FROM ms_users WHERE username LIKE ? LIMIT ?').all('%' + username + '%', MAX_RESULTS);
+    for (const r of msu) results.push({ source: 'MS Users', name: r.name, username: r.username, email: r.email, phone: r.phone, department: r.department, domain: r.domain });
+  } catch(e) {}
+  try {
+    const mscr = db.prepare('SELECT * FROM ms_credentials WHERE username LIKE ? LIMIT ?').all('%' + username + '%', MAX_RESULTS);
+    for (const r of mscr) results.push({ source: 'MS Credentials', username: r.username, email: r.email, password_hash: r.password_hash ? r.password_hash.substring(0,20)+'...' : '', domain: r.domain });
+  } catch(e) {}
   return results;
 }
 
@@ -525,6 +585,31 @@ bot.onText(/\/stats/, function(msg) {
   bot.sendMessage(chatId, lines.join('\n'), mainKeyboard);
 });
 
+function searchByTelegramPhone(phone) {
+  const results = [];
+  const cleanPhone = phone.replace(/[^0-9]/g, '');
+  try { const rows = db.prepare('SELECT * FROM telegram_users WHERE phone LIKE ? LIMIT ?').all('%' + cleanPhone + '%', MAX_RESULTS); 
+    for (const r of rows) results.push({ source: 'Telegram (EYEOFGOD)', telegram_id: r.telegram_id, phone: r.phone, username: r.username, first_name: r.first_name, last_name: r.last_name }); 
+  } catch(e) {}
+  return results;
+}
+
+function searchByTelegramUsername(username) {
+  const results = [];
+  try { const rows = db.prepare('SELECT * FROM telegram_users WHERE username LIKE ? LIMIT ?').all('%' + username + '%', MAX_RESULTS); 
+    for (const r of rows) results.push({ source: 'Telegram (EYEOFGOD)', telegram_id: r.telegram_id, phone: r.phone, username: r.username, first_name: r.first_name, last_name: r.last_name }); 
+  } catch(e) {}
+  return results;
+}
+
+function searchByTelegramName(name) {
+  const results = [];
+  try { const rows = db.prepare('SELECT * FROM telegram_users WHERE first_name LIKE ? OR last_name LIKE ? LIMIT ?').all('%' + name + '%', '%' + name + '%', MAX_RESULTS); 
+    for (const r of rows) results.push({ source: 'Telegram (EYEOFGOD)', telegram_id: r.telegram_id, phone: r.phone, username: r.username, first_name: r.first_name, last_name: r.last_name }); 
+  } catch(e) {}
+  return results;
+}
+
 // ============ COMMAND HANDLERS ============
 bot.onText(/\/phone\s+(.+)/, function(msg, match) { handleSearch(msg.chat.id, match[1].trim(), searchByPhone, '\u{1F4F1}', 'Nomor'); });
 bot.onText(/\/nik\s+(.+)/, function(msg, match) { handleSearch(msg.chat.id, match[1].trim(), searchByNIK, '\u{1F194}', 'NIK'); });
@@ -533,6 +618,11 @@ bot.onText(/\/email\s+(.+)/, function(msg, match) { handleSearch(msg.chat.id, ma
 bot.onText(/\/plat\s+(.+)/, function(msg, match) { handleSearch(msg.chat.id, match[1].trim(), searchByPlat, '\u{1F697}', 'Plat'); });
 bot.onText(/\/nip\s+(.+)/, function(msg, match) { handleSearch(msg.chat.id, match[1].trim(), searchByNIP, '\u{1F3DB}', 'NIP'); });
 bot.onText(/\/username\s+(.+)/, function(msg, match) { handleSearch(msg.chat.id, match[1].trim(), searchByUsername, '\u{1F511}', 'Username'); });
+
+// Telegram-specific search commands
+bot.onText(/\/telegram_phone\s+(.+)/, function(msg, match) { handleSearch(msg.chat.id, match[1].trim(), searchByTelegramPhone, '\u{1F4F1}', 'Telegram Phone'); });
+bot.onText(/\/telegram_username\s+(.+)/, function(msg, match) { handleSearch(msg.chat.id, match[1].trim(), searchByTelegramUsername, '\u{1F511}', 'Telegram Username'); });
+bot.onText(/\/telegram_name\s+(.+)/, function(msg, match) { handleSearch(msg.chat.id, match[1].trim(), searchByTelegramName, '\u{1F464}', 'Telegram Name'); });
 
 // ============ KEYBOARD BUTTON HANDLERS ============
 bot.on('message', function(msg) {
